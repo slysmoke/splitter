@@ -1,7 +1,7 @@
 const config = {
     // EVE Online OAuth Configuration
     clientId: '032f6b2aa1824530a6c6ae01dcdead0d', // You'll need to add your EVE Online Developer Application Client ID
-    callbackUrl: window.location.origin,
+    callbackUrl: `${window.location.origin}${window.location.pathname}`,
     authEndpoint: 'https://login.eveonline.com/v2/oauth/authorize',
     tokenEndpoint: 'https://login.eveonline.com/v2/oauth/token',
     // ESI Endpoints
