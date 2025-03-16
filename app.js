@@ -545,7 +545,7 @@ class EVEItemSplitter {
             </div>
             <div class="stat-item">
                 <div class="label">Average Split Volume</div>
-                <div class="value">${formatNumber(parseFloat(stats.avgVolume.toFixed(2))} m³</div>
+                <div class="value">${formatNumber(parseFloat(stats.avgVolume.toFixed(2)))} m³</div>
             </div>
             <div class="stat-item">
                 <div class="label">Average Split Value</div>
