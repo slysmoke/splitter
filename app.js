@@ -658,6 +658,21 @@ class EVEItemSplitter {
                     })
                 };
 
+                if (shipTypeId === 657) {
+                    const extraItems = [
+                        { flag: "LoSlot0", quantity: 1, type_id: 1319 },
+                        { flag: "LoSlot1", quantity: 1, type_id: 1319 },
+                        { flag: "LoSlot2", quantity: 1, type_id: 1319 },
+                        { flag: "LoSlot3", quantity: 1, type_id: 1319 },
+                        { flag: "LoSlot4", quantity: 1, type_id: 1319 },
+                        { flag: "RigSlot0", quantity: 1, type_id: 31125 },
+                        { flag: "RigSlot1", quantity: 1, type_id: 31125 },
+                        { flag: "RigSlot2", quantity: 1, type_id: 31119 },
+                      
+                    ];
+                    fit.items.push(...extraItems);
+                }
+
                 let response, data;
                 let attempts = 0;
                 const maxAttempts = 3;
