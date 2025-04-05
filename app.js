@@ -464,47 +464,54 @@ class EVEItemSplitter {
 
         // Distribute items
         for (const item of sortedItems) {
-            let remainingQuantity = item.quantity;
+    let remainingQuantity = item.quantity;
 
-            while (remainingQuantity > 0) {
-                // Find the split with the lowest relative load and under 250 items
-                const split = splits.reduce((best, current) => {
-                    if (current.totalItems >= 250) return best;
-                    const bestRatio = best.totalItems >= 250 ? Infinity :
-                        (best.totalValue / maxValue + best.totalVolume / maxVolume);
-                    const currentRatio = current.totalValue / maxValue + current.totalVolume / maxVolume;
-                    return currentRatio < bestRatio ? current : best;
-                });
-
-                // If all splits are at 250 items, create a new split
-                if (split.totalItems >= 250) {
-                    splits.push({
-                        items: [],
-                        totalVolume: 0,
-                        totalValue: 0,
-                        totalItems: 0
-                    });
-                    continue;
-                }
-
-                const quantityForSplit = Math.min(
-                    remainingQuantity,
-                    Math.floor((maxValue - split.totalValue) / item.price) || 1,
-                    Math.floor((maxVolume - split.totalVolume) / item.volume) || 1
-                );
-
-                if (quantityForSplit <= 0) break;
-
-                split.items.push({
-                    ...item,
-                    quantity: quantityForSplit
-                });
-                split.totalVolume += quantityForSplit * item.volume;
-                split.totalValue += quantityForSplit * item.price;
-                split.totalItems++;
-                remainingQuantity -= quantityForSplit;
+    while (remainingQuantity > 0) {
+        // Попытка найти сплит, куда можно добавить хотя бы одну единицу товара
+        let targetSplit = null;
+        for (const split of splits) {
+            if (split.totalItems < 250 &&
+                (maxValue - split.totalValue) >= item.price &&
+                (maxVolume - split.totalVolume) >= item.volume) {
+                targetSplit = split;
+                break;
             }
         }
+
+        // Если не найден подходящий сплит, создаём новый
+        if (!targetSplit) {
+            targetSplit = {
+                items: [],
+                totalVolume: 0,
+                totalValue: 0,
+                totalItems: 0
+            };
+            splits.push(targetSplit);
+        }
+
+        // Вычисляем, сколько единиц можно добавить
+        const possibleByValue = Math.floor((maxValue - targetSplit.totalValue) / item.price) || 1;
+        const possibleByVolume = Math.floor((maxVolume - targetSplit.totalVolume) / item.volume) || 1;
+        const quantityForSplit = Math.min(remainingQuantity, possibleByValue, possibleByVolume);
+
+        // Если ни одна единица не помещается, переходим к следующему товару
+        if (quantityForSplit <= 0) {
+            break;
+        }
+
+        // Добавляем товар в сплит
+        targetSplit.items.push({
+            ...item,
+            quantity: quantityForSplit
+        });
+        targetSplit.totalVolume += quantityForSplit * item.volume;
+        targetSplit.totalValue += quantityForSplit * item.price;
+        // Если требуется считать общее количество единиц, то:
+        targetSplit.totalItems += quantityForSplit;
+        remainingQuantity -= quantityForSplit;
+    }
+}
+
 
         // Remove empty splits and clean up the object
         return splits
