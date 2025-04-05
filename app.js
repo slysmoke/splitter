@@ -445,95 +445,80 @@ class EVEItemSplitter {
         }
     }
 
-    function createSplits(items, splitCount, maxVolume, maxValue) {
-    if (!items || items.length === 0) {
-        return [];
-    }
-
-    // Сортируем товары по соотношению цена/объём (при условии, что quantity влияет одинаково)
-    const sortedItems = [...items].sort((a, b) => (b.price / b.volume) - (a.price / a.volume));
-
-    // Инициализируем массив сплитов
-    let splits = Array.from({ length: splitCount }, () => ({
-        items: [],
-        totalVolume: 0,
-        totalValue: 0,
-        totalItems: 0
-    }));
-
-    for (const item of sortedItems) {
-        let remainingQuantity = item.quantity;
-
-        // Если товар даже в пустом сплите не поместится, пропускаем его (или обрабатываем отдельно)
-        if (item.price > maxValue || item.volume > maxVolume) {
-            console.warn('Товар не может быть добавлен ни в один сплит:', item);
-            continue;
+    createSplits(items, splitCount, maxVolume, maxValue) {
+        if (!items || items.length === 0) {
+            return [];
         }
 
-        while (remainingQuantity > 0) {
-            // Ищем сплит, куда можно добавить хотя бы одну единицу товара
-            let candidateSplit = null;
-            let minRatio = Infinity;
-            for (const split of splits) {
-                // Проверяем, что в сплите есть место для хотя бы одной единицы товара
-                if (
-                    split.totalItems < 250 &&
-                    (maxValue - split.totalValue) >= item.price &&
-                    (maxVolume - split.totalVolume) >= item.volume
-                ) {
-                    let currentRatio = (split.totalValue / maxValue) + (split.totalVolume / maxVolume);
-                    if (currentRatio < minRatio) {
-                        minRatio = currentRatio;
-                        candidateSplit = split;
-                    }
-                }
-            }
+        // Sort items by value/volume ratio for better distribution
+        const sortedItems = [...items].sort((a, b) => (b.price * b.quantity) / (b.volume * b.quantity) - (a.price * a.quantity) / (a.volume * a.quantity));
 
-            // Если подходящего сплита нет, создаём новый
-            if (!candidateSplit) {
-                candidateSplit = {
-                    items: [],
-                    totalVolume: 0,
-                    totalValue: 0,
-                    totalItems: 0
-                };
-                splits.push(candidateSplit);
-            }
-
-            // Вычисляем, сколько единиц можно добавить в выбранный сплит
-            const availableValue = maxValue - candidateSplit.totalValue;
-            const availableVolume = maxVolume - candidateSplit.totalVolume;
-            const possibleByValue = Math.floor(availableValue / item.price);
-            const possibleByVolume = Math.floor(availableVolume / item.volume);
-            const quantityForSplit = Math.min(remainingQuantity, possibleByValue, possibleByVolume);
-
-            // Если ни одна единица не помещается, помечаем текущий сплит как заполненный и пробуем заново
-            if (quantityForSplit <= 0) {
-                candidateSplit.totalItems = 250; // "Закрываем" сплит
-                continue;
-            }
-
-            // Добавляем товар в сплит
-            candidateSplit.items.push({
-                ...item,
-                quantity: quantityForSplit
-            });
-            candidateSplit.totalVolume += quantityForSplit * item.volume;
-            candidateSplit.totalValue += quantityForSplit * item.price;
-            candidateSplit.totalItems += quantityForSplit; // увеличиваем на количество добавленных единиц
-            remainingQuantity -= quantityForSplit;
-        }
-    }
-
-    // Убираем пустые сплиты и возвращаем упрощённую структуру
-    return splits
-        .filter(split => split.items.length > 0)
-        .map(({ items, totalVolume, totalValue }) => ({
-            items,
-            totalVolume,
-            totalValue
+        let splits = Array.from({
+            length: splitCount
+        }, () => ({
+            items: [],
+            totalVolume: 0,
+            totalValue: 0,
+            totalItems: 0
         }));
-}
+
+        // Distribute items
+        for (const item of sortedItems) {
+            let remainingQuantity = item.quantity;
+
+            while (remainingQuantity > 0) {
+                // Find the split with the lowest relative load and under 250 items
+                const split = splits.reduce((best, current) => {
+                    if (current.totalItems >= 250) return best;
+                    const bestRatio = best.totalItems >= 250 ? Infinity :
+                        (best.totalValue / maxValue + best.totalVolume / maxVolume);
+                    const currentRatio = current.totalValue / maxValue + current.totalVolume / maxVolume;
+                    return currentRatio < bestRatio ? current : best;
+                });
+
+                // If all splits are at 250 items, create a new split
+                if (split.totalItems >= 250) {
+                    splits.push({
+                        items: [],
+                        totalVolume: 0,
+                        totalValue: 0,
+                        totalItems: 0
+                    });
+                    continue;
+                }
+
+                const quantityForSplit = Math.min(
+                    remainingQuantity,
+                    Math.floor((maxValue - split.totalValue) / item.price) || 1,
+                    Math.floor((maxVolume - split.totalVolume) / item.volume) || 1
+                );
+
+                if (quantityForSplit <= 0) break;
+
+                split.items.push({
+                    ...item,
+                    quantity: quantityForSplit
+                });
+                split.totalVolume += quantityForSplit * item.volume;
+                split.totalValue += quantityForSplit * item.price;
+                split.totalItems++;
+                remainingQuantity -= quantityForSplit;
+            }
+        }
+
+        // Remove empty splits and clean up the object
+        return splits
+            .filter(split => split.items.length > 0)
+            .map(({
+                items,
+                totalVolume,
+                totalValue
+            }) => ({
+                items,
+                totalVolume,
+                totalValue
+            }));
+    }
 
 
     displayResults(splits, stats) {
