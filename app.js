@@ -445,87 +445,96 @@ class EVEItemSplitter {
         }
     }
 
-    createSplits(items, splitCount, maxVolume, maxValue) {
-        if (!items || items.length === 0) {
-            return [];
-        }
-
-        // Sort items by value/volume ratio for better distribution
-        const sortedItems = [...items].sort((a, b) => (b.price * b.quantity) / (b.volume * b.quantity) - (a.price * a.quantity) / (a.volume * a.quantity));
-
-        let splits = Array.from({
-            length: splitCount
-        }, () => ({
-            items: [],
-            totalVolume: 0,
-            totalValue: 0,
-            totalItems: 0
-        }));
-
-        // Distribute items
-        for (const item of sortedItems) {
-    let remainingQuantity = item.quantity;
-
-    while (remainingQuantity > 0) {
-        // Попытка найти сплит, куда можно добавить хотя бы одну единицу товара
-        let targetSplit = null;
-        for (const split of splits) {
-            if (split.totalItems < 250 &&
-                (maxValue - split.totalValue) >= item.price &&
-                (maxVolume - split.totalVolume) >= item.volume) {
-                targetSplit = split;
-                break;
-            }
-        }
-
-        // Если не найден подходящий сплит, создаём новый
-        if (!targetSplit) {
-            targetSplit = {
-                items: [],
-                totalVolume: 0,
-                totalValue: 0,
-                totalItems: 0
-            };
-            splits.push(targetSplit);
-        }
-
-        // Вычисляем, сколько единиц можно добавить
-        const possibleByValue = Math.floor((maxValue - targetSplit.totalValue) / item.price) || 1;
-        const possibleByVolume = Math.floor((maxVolume - targetSplit.totalVolume) / item.volume) || 1;
-        const quantityForSplit = Math.min(remainingQuantity, possibleByValue, possibleByVolume);
-
-        // Если ни одна единица не помещается, переходим к следующему товару
-        if (quantityForSplit <= 0) {
-            break;
-        }
-
-        // Добавляем товар в сплит
-        targetSplit.items.push({
-            ...item,
-            quantity: quantityForSplit
-        });
-        targetSplit.totalVolume += quantityForSplit * item.volume;
-        targetSplit.totalValue += quantityForSplit * item.price;
-        // Если требуется считать общее количество единиц, то:
-        targetSplit.totalItems += quantityForSplit;
-        remainingQuantity -= quantityForSplit;
+    function createSplits(items, splitCount, maxVolume, maxValue) {
+    if (!items || items.length === 0) {
+        return [];
     }
+
+    // Сортируем товары по соотношению цена/объём (при условии, что quantity влияет одинаково)
+    const sortedItems = [...items].sort((a, b) => (b.price / b.volume) - (a.price / a.volume));
+
+    // Инициализируем массив сплитов
+    let splits = Array.from({ length: splitCount }, () => ({
+        items: [],
+        totalVolume: 0,
+        totalValue: 0,
+        totalItems: 0
+    }));
+
+    for (const item of sortedItems) {
+        let remainingQuantity = item.quantity;
+
+        // Если товар даже в пустом сплите не поместится, пропускаем его (или обрабатываем отдельно)
+        if (item.price > maxValue || item.volume > maxVolume) {
+            console.warn('Товар не может быть добавлен ни в один сплит:', item);
+            continue;
+        }
+
+        while (remainingQuantity > 0) {
+            // Ищем сплит, куда можно добавить хотя бы одну единицу товара
+            let candidateSplit = null;
+            let minRatio = Infinity;
+            for (const split of splits) {
+                // Проверяем, что в сплите есть место для хотя бы одной единицы товара
+                if (
+                    split.totalItems < 250 &&
+                    (maxValue - split.totalValue) >= item.price &&
+                    (maxVolume - split.totalVolume) >= item.volume
+                ) {
+                    let currentRatio = (split.totalValue / maxValue) + (split.totalVolume / maxVolume);
+                    if (currentRatio < minRatio) {
+                        minRatio = currentRatio;
+                        candidateSplit = split;
+                    }
+                }
+            }
+
+            // Если подходящего сплита нет, создаём новый
+            if (!candidateSplit) {
+                candidateSplit = {
+                    items: [],
+                    totalVolume: 0,
+                    totalValue: 0,
+                    totalItems: 0
+                };
+                splits.push(candidateSplit);
+            }
+
+            // Вычисляем, сколько единиц можно добавить в выбранный сплит
+            const availableValue = maxValue - candidateSplit.totalValue;
+            const availableVolume = maxVolume - candidateSplit.totalVolume;
+            const possibleByValue = Math.floor(availableValue / item.price);
+            const possibleByVolume = Math.floor(availableVolume / item.volume);
+            const quantityForSplit = Math.min(remainingQuantity, possibleByValue, possibleByVolume);
+
+            // Если ни одна единица не помещается, помечаем текущий сплит как заполненный и пробуем заново
+            if (quantityForSplit <= 0) {
+                candidateSplit.totalItems = 250; // "Закрываем" сплит
+                continue;
+            }
+
+            // Добавляем товар в сплит
+            candidateSplit.items.push({
+                ...item,
+                quantity: quantityForSplit
+            });
+            candidateSplit.totalVolume += quantityForSplit * item.volume;
+            candidateSplit.totalValue += quantityForSplit * item.price;
+            candidateSplit.totalItems += quantityForSplit; // увеличиваем на количество добавленных единиц
+            remainingQuantity -= quantityForSplit;
+        }
+    }
+
+    // Убираем пустые сплиты и возвращаем упрощённую структуру
+    return splits
+        .filter(split => split.items.length > 0)
+        .map(({ items, totalVolume, totalValue }) => ({
+            items,
+            totalVolume,
+            totalValue
+        }));
 }
 
-
-        // Remove empty splits and clean up the object
-        return splits
-            .filter(split => split.items.length > 0)
-            .map(({
-                items,
-                totalVolume,
-                totalValue
-            }) => ({
-                items,
-                totalVolume,
-                totalValue
-            }));
-    }
 
     displayResults(splits, stats) {
         const resultsDiv = document.getElementById('results');
