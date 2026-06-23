@@ -371,20 +371,24 @@ class EVEItemSplitter {
 
             // Calculate totals
             const totalVolume = itemsWithInfo.reduce((sum, item) => sum + (item.volume * item.quantity), 0);
-            const totalValue = itemsWithInfo.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const totalValue  = itemsWithInfo.reduce((sum, item) => sum + (item.price  * item.quantity), 0);
+
+            // Theoretical minimum
+            const splitsByVolume = Math.ceil(totalVolume / maxVolume);
+            const splitsByValue  = Math.ceil(totalValue  / maxValue);
+            const minSplits      = Math.max(splitsByVolume, splitsByValue);
+            const bindingConstraint =
+                splitsByVolume > splitsByValue  ? 'volume' :
+                splitsByValue  > splitsByVolume ? 'ISK'    : 'both';
+
+            // Always run both algorithms for comparison
+            const ffdSplits      = this.createSplitsFFD(itemsWithInfo, maxVolume, maxValue);
+            const balancedSplits = this.createSplitsBalanced(itemsWithInfo, minSplits, maxVolume, maxValue);
+
+            const recommendedAlgo = ffdSplits.length <= balancedSplits.length ? 'ffd' : 'balanced';
 
             const algorithm = document.getElementById('split-algorithm').value;
-
-            // Create splits
-            let splits;
-            if (algorithm === 'ffd') {
-                splits = this.createSplitsFFD(itemsWithInfo, maxVolume, maxValue);
-            } else {
-                const splitsByVolume = Math.ceil(totalVolume / maxVolume);
-                const splitsByValue = Math.ceil(totalValue / maxValue);
-                const splitCount = Math.max(splitsByVolume, splitsByValue);
-                splits = this.createSplitsBalanced(itemsWithInfo, splitCount, maxVolume, maxValue);
-            }
+            const splits    = algorithm === 'ffd' ? ffdSplits : balancedSplits;
 
             if (!Array.isArray(splits) || splits.length === 0) {
                 throw new Error('No valid splits could be created with the given constraints');
@@ -392,7 +396,7 @@ class EVEItemSplitter {
 
             // Calculate average stats
             const avgVolume = splits.reduce((sum, split) => sum + split.totalVolume, 0) / splits.length;
-            const avgValue = splits.reduce((sum, split) => sum + split.totalValue, 0) / splits.length;
+            const avgValue  = splits.reduce((sum, split) => sum + split.totalValue,  0) / splits.length;
 
             this.displayResults(splits, {
                 totalVolume,
@@ -400,7 +404,15 @@ class EVEItemSplitter {
                 itemCount: itemsWithInfo.length,
                 splitCount: splits.length,
                 avgVolume,
-                avgValue
+                avgValue,
+                minSplits,
+                bindingConstraint,
+                splitsByVolume,
+                splitsByValue,
+                ffdCount:      ffdSplits.length,
+                balancedCount: balancedSplits.length,
+                recommendedAlgo,
+                selectedAlgo:  algorithm,
             });
         } catch (error) {
             console.error('Error calculating splits:', error);
@@ -476,7 +488,6 @@ class EVEItemSplitter {
     createSplitsFFD(items, maxVolume, maxValue) {
         if (!items || items.length === 0) return [];
 
-        // Sort by unit price descending so high-value items fill the ISK budget first
         const remaining = [...items]
             .sort((a, b) => b.price - a.price)
             .map(item => ({ ...item }));
@@ -486,9 +497,6 @@ class EVEItemSplitter {
         while (remaining.some(r => r.quantity > 0)) {
             const split = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
 
-            // Fill this split with ALL available item types before opening the next one.
-            // This lets cheap/small items (e.g. Liquid Ozone) fill unused volume
-            // left by expensive/large items in the same split.
             for (const item of remaining) {
                 if (item.quantity <= 0 || split.totalItems >= 250) continue;
 
@@ -505,7 +513,7 @@ class EVEItemSplitter {
                 item.quantity -= qty;
             }
 
-            if (split.items.length === 0) break; // nothing fits — shouldn't happen with valid input
+            if (split.items.length === 0) break;
             splits.push(split);
         }
 
@@ -598,6 +606,16 @@ class EVEItemSplitter {
         const statsDiv = document.getElementById('total-stats');
         const splitsDiv = document.getElementById('splits-list');
 
+        const bindingLabel =
+            stats.bindingConstraint === 'volume' ? `volume (${stats.splitsByVolume} by vol, ${stats.splitsByValue} by ISK)` :
+            stats.bindingConstraint === 'ISK'    ? `ISK (${stats.splitsByValue} by ISK, ${stats.splitsByVolume} by vol)`    :
+                                                   `both (${stats.minSplits} by ISK and vol)`;
+
+        const ffdLabel      = `Fill First — ${stats.ffdCount} splits`;
+        const balancedLabel = `Balanced — ${stats.balancedCount} splits`;
+        const recName       = stats.recommendedAlgo === 'ffd' ? 'Fill First' : 'Balanced';
+        const recHighlight  = stats.recommendedAlgo !== stats.selectedAlgo ? ' (not selected)' : '';
+
         // Display total statistics
         statsDiv.innerHTML = `
             <div class="stat-item">
@@ -623,6 +641,18 @@ class EVEItemSplitter {
             <div class="stat-item">
                 <div class="label">Average Split Value</div>
                 <div class="value">${formatPrice(stats.avgValue)}</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Theoretical Minimum</div>
+                <div class="value">${stats.minSplits} splits — bound by ${bindingLabel}</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Algorithm Comparison</div>
+                <div class="value">${ffdLabel} · ${balancedLabel}</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Recommended</div>
+                <div class="value stat-recommend${stats.recommendedAlgo !== stats.selectedAlgo ? ' stat-recommend--alt' : ''}">${recName}${recHighlight}</div>
             </div>
         `;
 

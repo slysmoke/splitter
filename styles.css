@@ -219,6 +219,14 @@ textarea {
     font-weight: bold;
 }
 
+.stat-recommend {
+    color: #4caf50;
+}
+
+.stat-recommend--alt {
+    color: #ff9800;
+}
+
 #user-info {
     display: flex;
     align-items: center;

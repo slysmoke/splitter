@@ -266,6 +266,8 @@ function fmtVol(m3) {
 // ── FFD Algorithm ────────────────────────────────────────────────────────────
 
 function createSplitsFFD(items, maxVolume, maxValue) {
+    if (!items || items.length === 0) return [];
+
     const remaining = [...items]
         .sort((a, b) => b.price - a.price)
         .map(item => ({ ...item }));
@@ -275,8 +277,6 @@ function createSplitsFFD(items, maxVolume, maxValue) {
     while (remaining.some(r => r.quantity > 0)) {
         const split = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
 
-        // Fill this split with ALL available item types before opening the next one.
-        // This lets cheap/small items fill unused volume left by expensive items.
         for (const item of remaining) {
             if (item.quantity <= 0 || split.totalItems >= 250) continue;
 
