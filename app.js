@@ -623,49 +623,53 @@ class EVEItemSplitter {
 
         // Display total statistics
         statsDiv.innerHTML = `
-            <div class="stat-item">
-                <div class="label">Total Items</div>
-                <div class="value">${stats.itemCount}</div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="label">Total Items</div>
+                    <div class="value">${stats.itemCount}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Total Volume</div>
+                    <div class="value">${formatNumber(parseFloat(stats.totalVolume.toFixed(2)))} m³</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Total Value</div>
+                    <div class="value">${formatPrice(stats.totalValue)}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Number of Splits</div>
+                    <div class="value">${stats.splitCount}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Avg Split Volume</div>
+                    <div class="value">${formatNumber(parseFloat(stats.avgVolume.toFixed(2)))} m³</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Avg Split Value</div>
+                    <div class="value">${formatPrice(stats.avgValue)}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Smallest by Volume</div>
+                    <div class="value">#${minVolIdx} — ${formatNumber(parseFloat(minVolSplit.totalVolume.toFixed(2)))} m³</div>
+                </div>
+                <div class="stat-item">
+                    <div class="label">Smallest by Value</div>
+                    <div class="value">#${minValIdx} — ${formatPrice(minValSplit.totalValue)}</div>
+                </div>
             </div>
-            <div class="stat-item">
-                <div class="label">Total Volume</div>
-                <div class="value">${formatNumber(parseFloat(stats.totalVolume.toFixed(2)))} m³</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Total Value</div>
-                <div class="value">${formatPrice(stats.totalValue)}</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Number of Splits</div>
-                <div class="value">${stats.splitCount}</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Average Split Volume</div>
-                <div class="value">${formatNumber(parseFloat(stats.avgVolume.toFixed(2)))} m³</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Average Split Value</div>
-                <div class="value">${formatPrice(stats.avgValue)}</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Smallest Split by Volume</div>
-                <div class="value">#${minVolIdx} — ${formatNumber(parseFloat(minVolSplit.totalVolume.toFixed(2)))} m³</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Smallest Split by Value</div>
-                <div class="value">#${minValIdx} — ${formatPrice(minValSplit.totalValue)}</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Theoretical Minimum</div>
-                <div class="value">${stats.minSplits} splits — bound by ${bindingLabel}</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Algorithm Comparison</div>
-                <div class="value">${ffdLabel} · ${balancedLabel}</div>
-            </div>
-            <div class="stat-item">
-                <div class="label">Recommended</div>
-                <div class="value stat-recommend${stats.recommendedAlgo !== stats.selectedAlgo ? ' stat-recommend--alt' : ''}">${recName}${recHighlight}</div>
+            <div class="stats-analysis">
+                <div class="stat-item stat-item--analysis">
+                    <div class="label">Theoretical Minimum</div>
+                    <div class="value">${stats.minSplits} splits — bound by ${bindingLabel}</div>
+                </div>
+                <div class="stat-item stat-item--analysis">
+                    <div class="label">Algorithm Comparison</div>
+                    <div class="value">${ffdLabel} · ${balancedLabel}</div>
+                </div>
+                <div class="stat-item stat-item--analysis">
+                    <div class="label">Recommended</div>
+                    <div class="value stat-recommend${stats.recommendedAlgo !== stats.selectedAlgo ? ' stat-recommend--alt' : ''}">${recName}${recHighlight}</div>
+                </div>
             </div>
         `;
 
