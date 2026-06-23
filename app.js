@@ -476,7 +476,7 @@ class EVEItemSplitter {
     createSplitsFFD(items, maxVolume, maxValue) {
         if (!items || items.length === 0) return [];
 
-        // Sort by unit price descending — highest value items fill ISK budget first
+        // Sort by unit price descending so high-value items fill the ISK budget first
         const remaining = [...items]
             .sort((a, b) => b.price - a.price)
             .map(item => ({ ...item }));
