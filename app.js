@@ -616,6 +616,11 @@ class EVEItemSplitter {
         const recName       = stats.recommendedAlgo === 'ffd' ? 'Fill First' : 'Balanced';
         const recHighlight  = stats.recommendedAlgo !== stats.selectedAlgo ? ' (not selected)' : '';
 
+        const minVolSplit   = splits.reduce((a, b) => b.totalVolume < a.totalVolume ? b : a);
+        const minValSplit   = splits.reduce((a, b) => b.totalValue  < a.totalValue  ? b : a);
+        const minVolIdx     = splits.indexOf(minVolSplit) + 1;
+        const minValIdx     = splits.indexOf(minValSplit) + 1;
+
         // Display total statistics
         statsDiv.innerHTML = `
             <div class="stat-item">
@@ -641,6 +646,14 @@ class EVEItemSplitter {
             <div class="stat-item">
                 <div class="label">Average Split Value</div>
                 <div class="value">${formatPrice(stats.avgValue)}</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Smallest Split by Volume</div>
+                <div class="value">#${minVolIdx} — ${formatNumber(parseFloat(minVolSplit.totalVolume.toFixed(2)))} m³</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Smallest Split by Value</div>
+                <div class="value">#${minValIdx} — ${formatPrice(minValSplit.totalValue)}</div>
             </div>
             <div class="stat-item">
                 <div class="label">Theoretical Minimum</div>
