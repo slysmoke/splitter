@@ -1,20 +1,49 @@
 #!/usr/bin/env node
 
-// Packaged volumes: cruisers = 10,000 m³, Liquid Ozone = 0.9 m³/unit
+// EVE packaged volumes (m³):  frigate 2500, cruiser 10000
+// modules: medium 5, x-large 50
+
 const MAX_VALUE  = 3_500_000_000;
 const MAX_VOLUME = 320_000;
 
-const items = [
-    { name: 'Exequror Navy Issue', quantity: 20,        price: 41_000_000,  volume: 10_000 },
-    { name: 'Osprey Navy Issue',   quantity: 20,        price: 43_820_000,  volume: 10_000 },
-    { name: 'Zealot',              quantity: 15,        price: 130_900_000, volume: 10_000 },
-    { name: 'Sacrilege',           quantity: 8,         price: 154_500_000, volume: 10_000 },
-    { name: 'Ashimmu',             quantity: 4,         price: 237_900_000, volume: 10_000 },
-    { name: 'Orthrus',             quantity: 4,         price: 244_400_000, volume: 10_000 },
-    { name: 'Phantasm',            quantity: 5,         price: 233_400_000, volume: 10_000 },
-    { name: 'Stratios',            quantity: 12,        price: 312_800_000, volume: 10_000 },
-    { name: 'Gila',                quantity: 28,        price: 197_300_000, volume: 10_000 },
-    { name: 'Liquid Ozone',        quantity: 2_000_000, price: 95.05,       volume: 0.9   },
+const TEST_CASES = [
+    {
+        name: 'Mixed ships + Liquid Ozone  (volume-bound: min 10 splits)',
+        items: [
+            { name: 'Exequror Navy Issue', quantity: 20,        price: 41_000_000,  volume: 10_000 },
+            { name: 'Osprey Navy Issue',   quantity: 20,        price: 43_820_000,  volume: 10_000 },
+            { name: 'Zealot',              quantity: 15,        price: 130_900_000, volume: 10_000 },
+            { name: 'Sacrilege',           quantity: 8,         price: 154_500_000, volume: 10_000 },
+            { name: 'Ashimmu',             quantity: 4,         price: 237_900_000, volume: 10_000 },
+            { name: 'Orthrus',             quantity: 4,         price: 244_400_000, volume: 10_000 },
+            { name: 'Phantasm',            quantity: 5,         price: 233_400_000, volume: 10_000 },
+            { name: 'Stratios',            quantity: 12,        price: 312_800_000, volume: 10_000 },
+            { name: 'Gila',                quantity: 28,        price: 197_300_000, volume: 10_000 },
+            { name: 'Liquid Ozone',        quantity: 2_000_000, price: 95.05,       volume: 0.9   },
+        ],
+    },
+    {
+        name: 'Ships + deadspace modules  (ISK-bound: min 11 splits)',
+        items: [
+            { name: 'Exequror Navy Issue',                   quantity: 20, price: 41_000_000,  volume: 10_000 },
+            { name: 'Osprey Navy Issue',                     quantity: 20, price: 43_820_000,  volume: 10_000 },
+            { name: 'Zealot',                                quantity: 15, price: 130_900_000, volume: 10_000 },
+            { name: 'Sacrilege',                             quantity: 8,  price: 154_500_000, volume: 10_000 },
+            { name: 'Ashimmu',                               quantity: 4,  price: 237_900_000, volume: 10_000 },
+            { name: 'Orthrus',                               quantity: 4,  price: 244_400_000, volume: 10_000 },
+            { name: 'Phantasm',                              quantity: 5,  price: 233_400_000, volume: 10_000 },
+            { name: 'Stratios',                              quantity: 12, price: 312_800_000, volume: 10_000 },
+            { name: 'Gila',                                  quantity: 28, price: 197_300_000, volume: 10_000 },
+            { name: 'Pithum A-Type Medium Shield Booster',   quantity: 30, price: 390_000_000, volume: 5     },
+            { name: 'Pithum A-Type Explosive Shield Amp',    quantity: 40, price: 1_924_000,   volume: 5     },
+            { name: 'Pith A-Type X-Large Shield Booster',   quantity: 20, price: 243_400_000, volume: 50    },
+            { name: 'Astero',                                quantity: 10, price: 96_000_000,  volume: 2_500 },
+            { name: 'Dramiel',                               quantity: 3,  price: 55_570_000,  volume: 2_500 },
+            { name: 'Worm',                                  quantity: 12, price: 57_970_000,  volume: 2_500 },
+            { name: 'Caldari Navy Hookbill',                 quantity: 25, price: 10_000_000,  volume: 2_500 },
+            { name: 'Federation Navy Comet',                 quantity: 25, price: 8_663_000,   volume: 2_500 },
+        ],
+    },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,6 +70,8 @@ function createSplitsFFD(items, maxVolume, maxValue) {
     while (remaining.some(r => r.quantity > 0)) {
         const split = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
 
+        // Fill this split with ALL available item types before opening the next one.
+        // This lets cheap/small items fill unused volume left by expensive items.
         for (const item of remaining) {
             if (item.quantity <= 0 || split.totalItems >= 250) continue;
 
@@ -98,6 +129,8 @@ function createSplitsBalanced(items, splitCount, maxVolume, maxValue) {
             const qty = Math.min(remaining, maxByValue, maxByVolume);
 
             if (qty <= 0) {
+                // All existing splits are full for this item.
+                // If a single unit exceeds the limits it can never fit — stop.
                 if ((item.price  > 0 && item.price  > maxValue) ||
                     (item.volume > 0 && item.volume > maxVolume)) break;
                 splits.push({ items: [], totalVolume: 0, totalValue: 0, totalItems: 0 });
@@ -118,10 +151,9 @@ function createSplitsBalanced(items, splitCount, maxVolume, maxValue) {
 
 // ── Verification ─────────────────────────────────────────────────────────────
 
-function verify(name, splits, originalItems) {
+function verify(splits, originalItems) {
     const errors = [];
 
-    // Check constraints
     splits.forEach((split, i) => {
         if (split.totalValue > MAX_VALUE * 1.0001)
             errors.push(`Split ${i+1}: ISK overflow (${fmtISK(split.totalValue)} > ${fmtISK(MAX_VALUE)})`);
@@ -131,7 +163,6 @@ function verify(name, splits, originalItems) {
             errors.push(`Split ${i+1}: too many item types (${split.items.length} > 250)`);
     });
 
-    // Check all items accounted for
     const resultQtys = new Map();
     splits.forEach(split => split.items.forEach(item => {
         resultQtys.set(item.name, (resultQtys.get(item.name) || 0) + item.quantity);
@@ -142,70 +173,60 @@ function verify(name, splits, originalItems) {
             errors.push(`${item.name}: expected qty ${item.quantity}, got ${got}`);
     });
 
-    if (errors.length === 0) {
-        console.log(`  Verification: ✓ OK`);
-    } else {
-        errors.forEach(e => console.log(`  Verification: ✗ ${e}`));
-    }
+    return errors.length === 0 ? '✓ OK' : errors.map(e => `✗ ${e}`).join('\n    ');
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────
 
-function report(name, splits) {
+function report(algoName, splits, originalItems) {
     const totalISK = splits.reduce((s, x) => s + x.totalValue,  0);
     const totalVol = splits.reduce((s, x) => s + x.totalVolume, 0);
     const avgISK   = splits.reduce((s, x) => s + x.totalValue  / MAX_VALUE,  0) / splits.length * 100;
     const avgVol   = splits.reduce((s, x) => s + x.totalVolume / MAX_VOLUME, 0) / splits.length * 100;
 
-    console.log(`\n${'═'.repeat(72)}`);
-    console.log(`  ${name}`);
-    console.log(`${'═'.repeat(72)}`);
-    console.log(`  Splits:       ${splits.length}`);
-    console.log(`  Total ISK:    ${fmtISK(totalISK)}`);
-    console.log(`  Total vol:    ${fmtVol(totalVol)} m³`);
-    console.log(`  Avg ISK fill: ${avgISK.toFixed(1)}%  (limit ${fmtISK(MAX_VALUE)})`);
-    console.log(`  Avg vol fill: ${avgVol.toFixed(1)}%  (limit ${fmtVol(MAX_VOLUME)} m³)`);
-    verify(name, splits, items);
+    console.log(`\n  ── ${algoName} ${'─'.repeat(Math.max(0, 50 - algoName.length))}`);
+    console.log(`  Splits: ${splits.length}  |  Avg ISK fill: ${avgISK.toFixed(1)}%  |  Avg vol fill: ${avgVol.toFixed(1)}%`);
+    console.log(`  Verification: ${verify(splits, originalItems)}`);
     console.log();
-    console.log(`  ${'#'.padStart(2)}  ${'ISK'.padStart(10)}  ${'ISK%'.padStart(6)}  ${'Vol m³'.padStart(8)}  ${'Vol%'.padStart(6)}  Items  Contents`);
-    console.log(`  ${'─'.repeat(70)}`);
+    console.log(`  ${'#'.padStart(2)}  ${'ISK'.padStart(10)}  ${'ISK%'.padStart(6)}  ${'Vol'.padStart(8)}  ${'Vol%'.padStart(5)}  Items`);
+    console.log(`  ${'─'.repeat(55)}`);
     splits.forEach((split, i) => {
         const iskPct = (split.totalValue  / MAX_VALUE  * 100).toFixed(1);
         const volPct = (split.totalVolume / MAX_VOLUME * 100).toFixed(1);
-        const contents = split.items.map(it => `${it.name}×${it.quantity}`).join(', ');
         console.log(
             `  ${String(i+1).padStart(2)}  ${fmtISK(split.totalValue).padStart(10)}  ${iskPct.padStart(5)}%  ` +
-            `${fmtVol(split.totalVolume).padStart(8)}  ${volPct.padStart(5)}%  ` +
-            `${String(split.items.length).padStart(5)}  ${contents}`
+            `${fmtVol(split.totalVolume).padStart(7)}  ${volPct.padStart(4)}%  ` +
+            `${split.items.map(it => `${it.name}×${it.quantity}`).join(', ')}`
         );
     });
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
 
-const totalValue  = items.reduce((s, i) => s + i.price * i.quantity, 0);
-const totalVolume = items.reduce((s, i) => s + i.volume * i.quantity, 0);
-const minSplits   = Math.max(Math.ceil(totalValue / MAX_VALUE), Math.ceil(totalVolume / MAX_VOLUME));
+for (const tc of TEST_CASES) {
+    const totalValue  = tc.items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const totalVolume = tc.items.reduce((s, i) => s + i.volume * i.quantity, 0);
+    const minByISK    = Math.ceil(totalValue  / MAX_VALUE);
+    const minByVol    = Math.ceil(totalVolume / MAX_VOLUME);
+    const minSplits   = Math.max(minByISK, minByVol);
 
-console.log('\n── Input ──────────────────────────────────────────────────────────────');
-items.forEach(i => {
-    const total = i.price * i.quantity;
-    console.log(`  ${i.name.padEnd(22)} qty: ${String(i.quantity).padStart(9)}  price: ${fmtISK(i.price).padStart(8)}  total: ${fmtISK(total).padStart(9)}`);
-});
-console.log(`  ${'─'.repeat(70)}`);
-console.log(`  ${'TOTAL'.padEnd(22)}                                   ${fmtISK(totalValue).padStart(9)}`);
-console.log(`\n  Constraints:  max ${fmtISK(MAX_VALUE)} ISK / ${fmtVol(MAX_VOLUME)} m³ per split`);
-console.log(`  Total volume: ${fmtVol(totalVolume)} m³`);
-console.log(`  Min splits (theoretical): ${minSplits}  (by ISK: ${Math.ceil(totalValue/MAX_VALUE)}, by vol: ${Math.ceil(totalVolume/MAX_VOLUME)})`);
+    console.log(`\n${'═'.repeat(72)}`);
+    console.log(`  ${tc.name}`);
+    console.log(`${'═'.repeat(72)}`);
+    console.log(`  Items: ${tc.items.length} types  |  Total ISK: ${fmtISK(totalValue)}  |  Total vol: ${fmtVol(totalVolume)} m³`);
+    console.log(`  Constraints: max ${fmtISK(MAX_VALUE)} / ${fmtVol(MAX_VOLUME)} m³`);
+    console.log(`  Theoretical minimum: ${minSplits} splits  (by ISK: ${minByISK}, by vol: ${minByVol})`);
 
-const ffd = createSplitsFFD(items, MAX_VOLUME, MAX_VALUE);
-report('FFD — Fill First Decreasing (new)', ffd);
+    const ffd = createSplitsFFD(tc.items, MAX_VOLUME, MAX_VALUE);
 
-const splitCount = Math.max(Math.ceil(totalVolume / MAX_VOLUME), Math.ceil(totalValue / MAX_VALUE));
-const balanced   = createSplitsBalanced(items, splitCount, MAX_VOLUME, MAX_VALUE);
-report('Balanced — Equal Distribution (old)', balanced);
+    const splitCount = Math.max(minByISK, minByVol);
+    const balanced   = createSplitsBalanced(tc.items, splitCount, MAX_VOLUME, MAX_VALUE);
 
-console.log(`\n── Summary ${'─'.repeat(61)}`);
-console.log(`  FFD:      ${ffd.length} splits`);
-console.log(`  Balanced: ${balanced.length} splits`);
-console.log(`  Winner:   ${ffd.length <= balanced.length ? 'FFD' : 'Balanced'} (${Math.abs(ffd.length - balanced.length)} fewer splits)\n`);
+    report('FFD — Fill First (new)', ffd, tc.items);
+    report('Balanced (old)', balanced, tc.items);
+
+    const winner = ffd.length <= balanced.length ? `FFD wins (${balanced.length - ffd.length} fewer splits)` : `Balanced wins (${ffd.length - balanced.length} fewer splits)`;
+    console.log(`\n  Result: FFD=${ffd.length}  Balanced=${balanced.length}  →  ${winner}`);
+}
+
+console.log(`\n${'═'.repeat(72)}\n`);
