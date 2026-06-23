@@ -23,6 +23,31 @@ const TEST_CASES = [
         ],
     },
     {
+        // Vindicators are expensive (800M) but huge (50k m³).
+        // Each split can hold only 4 before hitting 320k m³.
+        // 4 × 800M = 3.2B ISK → 300M ISK headroom left per split.
+        // Liquid Ozone (0.9 m³, 95 ISK) fills the leftover volume for almost no ISK.
+        // FFD packs LO into every split alongside ships; Balanced keeps them separate.
+        name: 'Faction battleships + Liquid Ozone  (volume-bound: min 6 splits)',
+        items: [
+            { name: 'Vindicator',   quantity: 20,        price: 800_000_000, volume: 50_000 },
+            { name: 'Liquid Ozone', quantity: 1_000_000, price: 95,          volume: 0.9   },
+        ],
+    },
+    {
+        // Uniform T2 cruisers, no cheap filler.
+        // All items have similar ISK/m³ (14–25k), so both algorithms distribute
+        // them the same way. ISK is the binding constraint; neither can beat 5 splits.
+        name: 'Uniform T2 cruisers, no filler  (ISK-bound: min 5 splits)',
+        items: [
+            { name: 'Cerberus',  quantity: 15, price: 250_000_000, volume: 10_000 },
+            { name: 'Eagle',     quantity: 15, price: 220_000_000, volume: 10_000 },
+            { name: 'Sacrilege', quantity: 20, price: 155_000_000, volume: 10_000 },
+            { name: 'Ishtar',    quantity: 20, price: 170_000_000, volume: 10_000 },
+            { name: 'Vagabond',  quantity: 15, price: 200_000_000, volume: 10_000 },
+        ],
+    },
+    {
         name: 'Ships + deadspace modules  (ISK-bound: min 11 splits)',
         items: [
             { name: 'Exequror Navy Issue',                   quantity: 20, price: 41_000_000,  volume: 10_000 },
