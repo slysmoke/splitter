@@ -476,38 +476,40 @@ class EVEItemSplitter {
     createSplitsFFD(items, maxVolume, maxValue) {
         if (!items || items.length === 0) return [];
 
-        // Sort by unit price descending — fill ISK limit as fast as possible
-        const sortedItems = [...items].sort((a, b) => b.price - a.price);
+        // Sort by unit price descending — highest value items fill ISK budget first
+        const remaining = [...items]
+            .sort((a, b) => b.price - a.price)
+            .map(item => ({ ...item }));
 
         const splits = [];
-        let current = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
-        splits.push(current);
 
-        for (const item of sortedItems) {
-            let remainingQuantity = item.quantity;
+        while (remaining.some(r => r.quantity > 0)) {
+            const split = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
 
-            while (remainingQuantity > 0) {
-                const maxByValue  = item.price  > 0 ? Math.floor((maxValue  - current.totalValue)  / item.price)  : remainingQuantity;
-                const maxByVolume = item.volume > 0 ? Math.floor((maxVolume - current.totalVolume) / item.volume) : remainingQuantity;
-                const qty = Math.min(remainingQuantity, maxByValue, maxByVolume);
+            // Fill this split with ALL available item types before opening the next one.
+            // This lets cheap/small items (e.g. Liquid Ozone) fill unused volume
+            // left by expensive/large items in the same split.
+            for (const item of remaining) {
+                if (item.quantity <= 0 || split.totalItems >= 250) continue;
 
-                if (qty <= 0 || current.totalItems >= 250) {
-                    current = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
-                    splits.push(current);
-                    continue;
-                }
+                const maxByValue  = item.price  > 0 ? Math.floor((maxValue  - split.totalValue)  / item.price)  : item.quantity;
+                const maxByVolume = item.volume > 0 ? Math.floor((maxVolume - split.totalVolume) / item.volume) : item.quantity;
+                const qty = Math.min(item.quantity, maxByValue, maxByVolume);
 
-                current.items.push({ ...item, quantity: qty });
-                current.totalVolume += qty * item.volume;
-                current.totalValue  += qty * item.price;
-                current.totalItems++;
-                remainingQuantity -= qty;
+                if (qty <= 0) continue;
+
+                split.items.push({ ...item, quantity: qty });
+                split.totalVolume += qty * item.volume;
+                split.totalValue  += qty * item.price;
+                split.totalItems++;
+                item.quantity -= qty;
             }
+
+            if (split.items.length === 0) break; // nothing fits — shouldn't happen with valid input
+            splits.push(split);
         }
 
-        return splits
-            .filter(s => s.items.length > 0)
-            .map(({ items, totalVolume, totalValue }) => ({ items, totalVolume, totalValue }));
+        return splits.map(({ items, totalVolume, totalValue }) => ({ items, totalVolume, totalValue }));
     }
 
     createSplitsBalanced(items, splitCount, maxVolume, maxValue) {
@@ -556,7 +558,14 @@ class EVEItemSplitter {
                 const maxByVolume = item.volume > 0 ? Math.floor((maxVolume - split.totalVolume) / item.volume) : remainingQuantity;
                 const quantityForSplit = Math.min(remainingQuantity, maxByValue, maxByVolume);
 
-                if (quantityForSplit <= 0) break;
+                if (quantityForSplit <= 0) {
+                    // All existing splits are full for this item.
+                    // If a single unit exceeds the limits it can never fit — stop.
+                    if ((item.price  > 0 && item.price  > maxValue) ||
+                        (item.volume > 0 && item.volume > maxVolume)) break;
+                    splits.push({ items: [], totalVolume: 0, totalValue: 0, totalItems: 0 });
+                    continue;
+                }
 
                 split.items.push({
                     ...item,
