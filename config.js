@@ -10,7 +10,7 @@ const config = {
     // LocalStorage Keys
     storageKeys: {
         accessToken: 'eve_access_token',
-        refreshToken: 'eve_refres_token',
+        refreshToken: 'eve_refresh_token',
         characterInfo: 'eve_character_info',
         savedFits: 'saved_fits',
         userPreferences: 'eve_user_preferences'

@@ -40,9 +40,9 @@ class EVEItemSplitter {
 
 
     generateCodeVerifier() {
-        const array = new Uint32Array(56);
+        const array = new Uint8Array(32);
         window.crypto.getRandomValues(array);
-        const verifier = array.join('');
+        const verifier = this.base64urlEncode(array.buffer);
         localStorage.setItem("code_verifier", verifier);
         return verifier;
     }
@@ -67,6 +67,7 @@ class EVEItemSplitter {
 
 
         const state = Math.random().toString(36).substring(7);
+        localStorage.setItem('oauth_state', state);
         const codeVerifier = this.generateCodeVerifier();
         this.generateCodeChallenge(codeVerifier).then((codeChallenge) => {
             const authUrl = `${config.authEndpoint}?` + new URLSearchParams({
@@ -115,7 +116,13 @@ class EVEItemSplitter {
 
             const authCode = params.get('code');
             if (authCode) {
-
+                const returnedState = params.get('state');
+                const savedState = localStorage.getItem('oauth_state');
+                if (!savedState || returnedState !== savedState) {
+                    console.error("State mismatch! Possible CSRF attack.");
+                    return;
+                }
+                localStorage.removeItem('oauth_state');
                 await this.exchangeCodeForTokens(authCode);
                 window.history.replaceState({}, document.title, window.location.pathname);
             } else {
@@ -226,7 +233,6 @@ class EVEItemSplitter {
                 return await this.refreshAccessToken();
             }
 
-            await this.fetchCharacterInfo(accessToken);
             this.updateUIForLogin();
             return true;
         } catch (error) {
@@ -404,18 +410,17 @@ class EVEItemSplitter {
                 }
             }
 
-            // Now fetch prices and details for all found items
+            // Fetch all market prices once, then fetch type details per item
+            const allPrices = await fetch(`${config.esiBaseUrl}/markets/prices/?datasource=tranquility`)
+                .then(r => r.json());
+
             const itemDetails = await Promise.all(
                 Array.from(itemsMap.entries()).map(async ([name, id]) => {
                     try {
-                        const [priceData, typeData] = await Promise.all([
-                            fetch(`${config.esiBaseUrl}/markets/prices/?datasource=tranquility`)
-                            .then(r => r.json()),
-                            fetch(`${config.esiBaseUrl}/universe/types/${id}/?datasource=tranquility`)
-                            .then(r => r.json())
-                        ]);
+                        const typeData = await fetch(`${config.esiBaseUrl}/universe/types/${id}/?datasource=tranquility`)
+                            .then(r => r.json());
 
-                        const price = priceData.find(p => p.type_id === id);
+                        const price = allPrices.find(p => p.type_id === id);
 
                         return {
                             name,
@@ -487,11 +492,9 @@ class EVEItemSplitter {
                     continue;
                 }
 
-                const quantityForSplit = Math.min(
-                    remainingQuantity,
-                    Math.floor((maxValue - split.totalValue) / item.price) || 1,
-                    Math.floor((maxVolume - split.totalVolume) / item.volume) || 1
-                );
+                const maxByValue = item.price > 0 ? Math.floor((maxValue - split.totalValue) / item.price) : remainingQuantity;
+                const maxByVolume = item.volume > 0 ? Math.floor((maxVolume - split.totalVolume) / item.volume) : remainingQuantity;
+                const quantityForSplit = Math.min(remainingQuantity, maxByValue, maxByVolume);
 
                 if (quantityForSplit <= 0) break;
 
