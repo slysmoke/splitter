@@ -20,13 +20,15 @@ class EVEItemSplitter {
         document.getElementById('max-value').addEventListener('change', () => this.saveUserPreferences());
         document.getElementById('max-volume').addEventListener('change', () => this.saveUserPreferences());
         document.getElementById('ship-type').addEventListener('change', () => this.saveUserPreferences());
+        document.getElementById('split-algorithm').addEventListener('change', () => this.saveUserPreferences());
     }
 
     saveUserPreferences() {
         const preferences = {
             maxValue: document.getElementById('max-value').value,
             maxVolume: document.getElementById('max-volume').value,
-            shipType: document.getElementById('ship-type').value
+            shipType: document.getElementById('ship-type').value,
+            splitAlgorithm: document.getElementById('split-algorithm').value
         };
         localStorage.setItem(config.storageKeys.userPreferences, JSON.stringify(preferences));
     }
@@ -36,6 +38,7 @@ class EVEItemSplitter {
         if (preferences.maxValue) document.getElementById('max-value').value = preferences.maxValue;
         if (preferences.maxVolume) document.getElementById('max-volume').value = preferences.maxVolume;
         if (preferences.shipType) document.getElementById('ship-type').value = preferences.shipType;
+        if (preferences.splitAlgorithm) document.getElementById('split-algorithm').value = preferences.splitAlgorithm;
     }
 
 
@@ -370,13 +373,18 @@ class EVEItemSplitter {
             const totalVolume = itemsWithInfo.reduce((sum, item) => sum + (item.volume * item.quantity), 0);
             const totalValue = itemsWithInfo.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-            // Determine split count based on constraints
-            const splitsByVolume = Math.ceil(totalVolume / maxVolume);
-            const splitsByValue = Math.ceil(totalValue / maxValue);
-            const splitCount = Math.max(splitsByVolume, splitsByValue);
+            const algorithm = document.getElementById('split-algorithm').value;
 
             // Create splits
-            const splits = this.createSplits(itemsWithInfo, splitCount, maxVolume, maxValue);
+            let splits;
+            if (algorithm === 'ffd') {
+                splits = this.createSplitsFFD(itemsWithInfo, maxVolume, maxValue);
+            } else {
+                const splitsByVolume = Math.ceil(totalVolume / maxVolume);
+                const splitsByValue = Math.ceil(totalValue / maxValue);
+                const splitCount = Math.max(splitsByVolume, splitsByValue);
+                splits = this.createSplitsBalanced(itemsWithInfo, splitCount, maxVolume, maxValue);
+            }
 
             if (!Array.isArray(splits) || splits.length === 0) {
                 throw new Error('No valid splits could be created with the given constraints');
@@ -465,7 +473,44 @@ class EVEItemSplitter {
         }
     }
 
-    createSplits(items, splitCount, maxVolume, maxValue) {
+    createSplitsFFD(items, maxVolume, maxValue) {
+        if (!items || items.length === 0) return [];
+
+        // Sort by unit price descending — fill ISK limit as fast as possible
+        const sortedItems = [...items].sort((a, b) => b.price - a.price);
+
+        const splits = [];
+        let current = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
+        splits.push(current);
+
+        for (const item of sortedItems) {
+            let remainingQuantity = item.quantity;
+
+            while (remainingQuantity > 0) {
+                const maxByValue  = item.price  > 0 ? Math.floor((maxValue  - current.totalValue)  / item.price)  : remainingQuantity;
+                const maxByVolume = item.volume > 0 ? Math.floor((maxVolume - current.totalVolume) / item.volume) : remainingQuantity;
+                const qty = Math.min(remainingQuantity, maxByValue, maxByVolume);
+
+                if (qty <= 0 || current.totalItems >= 250) {
+                    current = { items: [], totalVolume: 0, totalValue: 0, totalItems: 0 };
+                    splits.push(current);
+                    continue;
+                }
+
+                current.items.push({ ...item, quantity: qty });
+                current.totalVolume += qty * item.volume;
+                current.totalValue  += qty * item.price;
+                current.totalItems++;
+                remainingQuantity -= qty;
+            }
+        }
+
+        return splits
+            .filter(s => s.items.length > 0)
+            .map(({ items, totalVolume, totalValue }) => ({ items, totalVolume, totalValue }));
+    }
+
+    createSplitsBalanced(items, splitCount, maxVolume, maxValue) {
         if (!items || items.length === 0) {
             return [];
         }
