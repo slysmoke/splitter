@@ -62,14 +62,47 @@ class EVEItemSplitter {
         return btoa(base64).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
-    decodeJwt(token) {
-        try {
-            const payload = token.split('.')[1];
-            return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-        } catch (e) {
-            console.error('Failed to decode JWT:', e);
-            return null;
+    b64urlDecode(str) {
+        return atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    }
+
+    async validateJwt(token) {
+        const parts = token.split('.');
+        if (parts.length !== 3) throw new Error('Malformed JWT');
+
+        const header  = JSON.parse(this.b64urlDecode(parts[0]));
+        const payload = JSON.parse(this.b64urlDecode(parts[1]));
+
+        // 1. Expiry
+        if (payload.exp * 1000 < Date.now()) throw new Error('Token expired');
+
+        // 2. Issuer
+        if (payload.iss !== 'login.eveonline.com' && payload.iss !== 'https://login.eveonline.com')
+            throw new Error('Invalid issuer');
+
+        // 3. Audience
+        const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+        if (!aud.includes('EVE Online') || !aud.includes(config.clientId))
+            throw new Error('Invalid audience');
+
+        // 4. Signature (RS256 via JWKS)
+        if (!this._jwksCache) {
+            this._jwksCache = await fetch('https://login.eveonline.com/oauth/jwks').then(r => r.json());
         }
+        const jwk = this._jwksCache.keys.find(k => k.kid === header.kid);
+        if (!jwk) throw new Error('Signing key not found in JWKS');
+
+        const cryptoKey = await crypto.subtle.importKey(
+            'jwk', jwk,
+            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+            false, ['verify']
+        );
+        const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+        const sig  = Uint8Array.from(this.b64urlDecode(parts[2]), c => c.charCodeAt(0));
+        const ok   = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', cryptoKey, sig, data);
+        if (!ok) throw new Error('Invalid JWT signature');
+
+        return payload;
     }
 
     saveCharacterInfoFromToken(tokenInfo) {
@@ -210,9 +243,11 @@ class EVEItemSplitter {
 
     async validateAndRefreshToken(accessToken) {
         try {
-            const tokenInfo = this.decodeJwt(accessToken);
-            if (!tokenInfo) {
-                console.warn("Failed to decode access token. Attempting refresh...");
+            let tokenInfo;
+            try {
+                tokenInfo = await this.validateJwt(accessToken);
+            } catch (e) {
+                console.warn("Token validation failed:", e.message, "— attempting refresh...");
                 return await this.refreshAccessToken();
             }
 
@@ -283,8 +318,12 @@ class EVEItemSplitter {
                 console.warn("No new refresh token received.");
             }
 
-            const tokenInfo = this.decodeJwt(data.access_token);
-            if (tokenInfo) this.saveCharacterInfoFromToken(tokenInfo);
+            try {
+                const tokenInfo = await this.validateJwt(data.access_token);
+                this.saveCharacterInfoFromToken(tokenInfo);
+            } catch (e) {
+                console.error("Failed to validate refreshed token:", e.message);
+            }
 
             return true;
         } catch (error) {
