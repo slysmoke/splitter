@@ -62,6 +62,24 @@ class EVEItemSplitter {
         return btoa(base64).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
+    decodeJwt(token) {
+        try {
+            const payload = token.split('.')[1];
+            return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+        } catch (e) {
+            console.error('Failed to decode JWT:', e);
+            return null;
+        }
+    }
+
+    saveCharacterInfoFromToken(tokenInfo) {
+        localStorage.setItem(config.storageKeys.characterInfo, JSON.stringify({
+            CharacterID: tokenInfo.sub.split(':')[2],
+            CharacterName: tokenInfo.name,
+            ExpiresOn: tokenInfo.exp
+        }));
+    }
+
     login() {
         this.logout();
 
@@ -191,47 +209,27 @@ class EVEItemSplitter {
     }
 
     async validateAndRefreshToken(accessToken) {
-
-
         try {
-            const response = await fetch('https://esi.evetech.net/verify/', {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
-            });
-
-
-
-            if (!response.ok) {
-                console.warn("Access token is invalid. Attempting refresh...");
+            const tokenInfo = this.decodeJwt(accessToken);
+            if (!tokenInfo) {
+                console.warn("Failed to decode access token. Attempting refresh...");
                 return await this.refreshAccessToken();
             }
 
-            if (this.tokenRefreshInterval) {
-            clearInterval(this.tokenRefreshInterval);
-        }
-
-            this.tokenRefreshInterval = setInterval(async () => {
-                console.log("Refreshing access token every 15 minutes...");
-                await this.refreshAccessToken();
-            }, 900000); // 15 minutes
-
-            const tokenInfo = await response.json();
-
-
-            localStorage.setItem(config.storageKeys.characterInfo, JSON.stringify({
-                CharacterID: tokenInfo.CharacterID || tokenInfo.sub.split(':')[2],
-                CharacterName: tokenInfo.CharacterName || tokenInfo.name,
-                ExpiresOn: tokenInfo.ExpiresOn || tokenInfo.exp
-            }));
-
-
-
-            const expiresOn = new Date(tokenInfo.ExpiresOn || tokenInfo.expires_on).getTime();
-            if (expiresOn - Date.now() < 300000) {
+            if (tokenInfo.exp * 1000 - Date.now() < 300000) {
                 console.warn("Access token is about to expire. Refreshing...");
                 return await this.refreshAccessToken();
             }
+
+            this.saveCharacterInfoFromToken(tokenInfo);
+
+            if (this.tokenRefreshInterval) {
+                clearInterval(this.tokenRefreshInterval);
+            }
+            this.tokenRefreshInterval = setInterval(async () => {
+                console.log("Refreshing access token every 15 minutes...");
+                await this.refreshAccessToken();
+            }, 900000);
 
             this.updateUIForLogin();
             return true;
@@ -285,6 +283,9 @@ class EVEItemSplitter {
                 console.warn("No new refresh token received.");
             }
 
+            const tokenInfo = this.decodeJwt(data.access_token);
+            if (tokenInfo) this.saveCharacterInfoFromToken(tokenInfo);
+
             return true;
         } catch (error) {
             console.error("Token refresh error:", error);
@@ -295,31 +296,6 @@ class EVEItemSplitter {
 
 
 
-    async fetchCharacterInfo(accessToken) {
-        try {
-            const response = await fetch('https://esi.evetech.net/verify/', {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
-            });
-            if (!response.ok) {
-                throw new Error('Failed to fetch character info');
-            }
-            const characterInfo = await response.json();
-
-            localStorage.setItem(config.storageKeys.characterInfo, JSON.stringify({
-                CharacterID: characterInfo.CharacterID || characterInfo.sub.split(':')[2],
-                CharacterName: characterInfo.CharacterName || characterInfo.name,
-                ExpiresOn: characterInfo.ExpiresOn || characterInfo.exp
-            }));
-
-
-
-        } catch (error) {
-            console.error('Error fetching character info:', error);
-            this.logout();
-        }
-    }
 
     async calculateSplits() {
         const loadingDiv = document.getElementById('loading');
