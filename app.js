@@ -120,7 +120,9 @@ class EVEItemSplitter {
         this.logout();
 
 
-        const state = Math.random().toString(36).substring(7);
+        const stateBytes = new Uint8Array(24);
+        crypto.getRandomValues(stateBytes);
+        const state = Array.from(stateBytes, byte => byte.toString(16).padStart(2, '0')).join('');
         localStorage.setItem('oauth_state', state);
         const codeVerifier = this.generateCodeVerifier();
         this.generateCodeChallenge(codeVerifier).then((codeChallenge) => {
@@ -229,7 +231,7 @@ class EVEItemSplitter {
             }
 
             const data = await response.json();
-            console.log("Received token response:", data);
+            // Never log OAuth responses: they contain bearer and refresh tokens.
 
             localStorage.setItem(config.storageKeys.accessToken, data.access_token);
             if (data.refresh_token) {
@@ -347,12 +349,21 @@ class EVEItemSplitter {
         resultsDiv.classList.add('hidden');
 
         const input = document.getElementById('items-input').value;
-        const maxValue = parseFloat(document.getElementById('max-value').value) || Infinity;
-        const maxVolume = parseFloat(document.getElementById('max-volume').value) || Infinity;
-
-        const items = this.parseInput(input);
+        const maxValueInput = document.getElementById('max-value').value.trim();
+        const maxVolumeInput = document.getElementById('max-volume').value.trim();
+        const maxValue = maxValueInput === '' ? Infinity : Number(maxValueInput);
+        const maxVolume = maxVolumeInput === '' ? Infinity : Number(maxVolumeInput);
 
         try {
+            if ((maxValueInput !== '' && (!Number.isFinite(maxValue) || maxValue <= 0)) ||
+                (maxVolumeInput !== '' && (!Number.isFinite(maxVolume) || maxVolume <= 0))) {
+                throw new Error('Maximum value and volume must be positive finite numbers, or left blank for no limit.');
+            }
+            if (maxValue === Infinity && maxVolume === Infinity) {
+                throw new Error('Set at least one limit (maximum value or maximum volume).');
+            }
+
+            const items = this.parseInput(input);
 
             const uniqueNames = [...new Set(items.map(item => item.name))];
 
@@ -487,6 +498,7 @@ class EVEItemSplitter {
 
     createSplitsFFD(items, maxVolume, maxValue) {
         if (!items || items.length === 0) return [];
+        this.validateSplitItems(items, maxVolume, maxValue);
 
         const remaining = [...items]
             .sort((a, b) => b.price - a.price)
@@ -513,16 +525,24 @@ class EVEItemSplitter {
                 item.quantity -= qty;
             }
 
-            if (split.items.length === 0) break;
+            if (split.items.length === 0) {
+                const blocked = remaining.find(item => item.quantity > 0);
+                throw new Error(`Cannot fit ${blocked.name} within the configured limits. Increase a limit or reduce the item quantity.`);
+            }
             splits.push(split);
         }
 
+        this.assertAllItemsDistributed(items, splits);
         return splits.map(({ items, totalVolume, totalValue }) => ({ items, totalVolume, totalValue }));
     }
 
     createSplitsBalanced(items, splitCount, maxVolume, maxValue) {
         if (!items || items.length === 0) {
             return [];
+        }
+        this.validateSplitItems(items, maxVolume, maxValue);
+        if (!Number.isInteger(splitCount) || splitCount < 1) {
+            throw new Error('At least one split is required. Check the configured limits.');
         }
 
         // Sort items by value/volume ratio for better distribution
@@ -569,8 +589,9 @@ class EVEItemSplitter {
                 if (quantityForSplit <= 0) {
                     // All existing splits are full for this item.
                     // If a single unit exceeds the limits it can never fit — stop.
-                    if ((item.price  > 0 && item.price  > maxValue) ||
-                        (item.volume > 0 && item.volume > maxVolume)) break;
+                    if (item.price > maxValue || item.volume > maxVolume) {
+                        throw new Error(`Cannot fit ${item.name} within the configured limits. Increase a limit or reduce the item quantity.`);
+                    }
                     splits.push({ items: [], totalVolume: 0, totalValue: 0, totalItems: 0 });
                     continue;
                 }
@@ -585,6 +606,8 @@ class EVEItemSplitter {
                 remainingQuantity -= quantityForSplit;
             }
         }
+
+        this.assertAllItemsDistributed(items, splits);
 
         // Remove empty splits and clean up the object
         return splits
@@ -704,23 +727,58 @@ class EVEItemSplitter {
     }
 
     parseInput(input) {
-        return input.trim().split('\n')
-            .map(line => {
-                const columns = line.trim().split('\t');
-                if (columns.length >= 2) {
-                    const name = columns[0].trim();
-                    const quantity = parseInt(columns[1].trim());
-                    if (!isNaN(quantity)) {
+        const lines = input.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        if (lines.length === 0) {
+            throw new Error('Paste at least one item with its quantity (name, then a tab, then a positive integer).');
+        }
 
-                        return {
-                            name,
-                            quantity
-                        };
-                    }
-                }
-                return null;
-            })
-            .filter(item => item !== null);
+        return lines.map((line, index) => {
+            const columns = line.split('\t');
+            const name = (columns[0] || '').trim();
+            const quantityText = (columns[1] || '').trim();
+
+            if (columns.length < 2 || !name || !/^\d+$/.test(quantityText)) {
+                throw new Error(`Invalid input on line ${index + 1}. Use: item name, tab, positive whole-number quantity.`);
+            }
+
+            const quantity = Number(quantityText);
+            if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+                throw new Error(`Quantity on line ${index + 1} must be a positive safe integer.`);
+            }
+
+            return { name, quantity };
+        });
+    }
+
+    validateSplitItems(items, maxVolume, maxValue) {
+        for (const item of items) {
+            if (!item.name || !Number.isSafeInteger(item.quantity) || item.quantity <= 0 ||
+                !Number.isFinite(item.price) || item.price < 0 ||
+                !Number.isFinite(item.volume) || item.volume < 0) {
+                throw new Error(`Invalid quantity, price, or volume for ${item.name || 'an item'}.`);
+            }
+            if (item.price > maxValue || item.volume > maxVolume) {
+                throw new Error(`Cannot fit ${item.name} within the configured limits. Increase a limit or reduce the item quantity.`);
+            }
+        }
+    }
+
+    assertAllItemsDistributed(originalItems, splits) {
+        const expected = new Map();
+        const actual = new Map();
+        for (const item of originalItems) {
+            expected.set(item.name, (expected.get(item.name) || 0) + item.quantity);
+        }
+        for (const split of splits) {
+            for (const item of split.items) {
+                actual.set(item.name, (actual.get(item.name) || 0) + item.quantity);
+            }
+        }
+        for (const [name, quantity] of expected) {
+            if (actual.get(name) !== quantity) {
+                throw new Error(`Split calculation failed to preserve the quantity of ${name} (${actual.get(name) || 0} of ${quantity}). No partial result was displayed.`);
+            }
+        }
     }
 
 
