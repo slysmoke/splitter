@@ -168,7 +168,7 @@ class EVEItemSplitter {
 
         if (window.location.search) {
             const params = new URLSearchParams(window.location.search.substring(1));
-            console.log("URL Params:", Object.fromEntries(params.entries()));
+            // Do not log callback parameters: they can contain a one-time OAuth code.
 
             const authCode = params.get('code');
             if (authCode) {
@@ -327,7 +327,7 @@ class EVEItemSplitter {
                 const tokenInfo = await this.validateJwt(data.access_token);
                 this.saveCharacterInfoFromToken(tokenInfo);
             } catch (e) {
-                console.error("Failed to validate refreshed token:", e.message);
+                throw new Error(`Failed to validate refreshed token: ${e.message}`);
             }
 
             return true;
@@ -857,9 +857,12 @@ class EVEItemSplitter {
 
                 while (attempts < maxAttempts) {
                     response = await this.postFit(fit);
-                    data = await response.json();
+                    data = await response.json().catch(() => ({}));
 
                     if (response.ok) {
+                        if (!data.fitting_id) {
+                            throw new Error('The ESI response did not include a fitting ID.');
+                        }
                         newFits.push(data.fitting_id);
                         break;
                     }
